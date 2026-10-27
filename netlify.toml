@@ -1,0 +1,13 @@
+[build]
+  publish = "public"
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+[[headers]]
+  for = "/runner.js"
+  [headers.values]
+    Content-Security-Policy = "default-src 'none'; script-src 'unsafe-eval'; connect-src 'none'"
