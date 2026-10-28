@@ -1,0 +1,68 @@
+<!doctype html><html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'none'"><title>ZERO LAB 隔離ターゲット</title><style>
+*{box-sizing:border-box}body{margin:0;background:#fbf8f3;color:#24211e;font:14px/1.7 system-ui,sans-serif;padding:22px}.head{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #dfd8cd;padding-bottom:14px;margin-bottom:20px}.brand{font-weight:800;letter-spacing:2px}.mode{font-size:11px;background:#ebe4d8;padding:4px 10px;border-radius:5px}h1{font-size:24px;margin:0 0 8px}p{font-size:12px;color:#847b6e;margin:8px 0 18px}.result{border:1px solid #ded6c9;background:white;border-radius:10px;padding:20px;margin:15px 0;min-height:80px;overflow-wrap:anywhere}.proof{padding:9px 12px;border:1px dashed #c3b39c;font:12px monospace;border-radius:5px;margin-top:20px}.label{font:10px monospace;color:#988772;letter-spacing:1px;margin-bottom:8px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.8 monospace}.big{font-size:32px;font-weight:700}.foot{font-size:10px;color:#9c9183;margin-top:18px}.badge{padding:6px 12px;background:#eee7dc;border-radius:5px;font-size:11px}img{max-width:100%}
+</style></head><body><div class="head"><div class="brand" id="brand">ZERO / TRAINING</div><span class="mode" id="mode">接続待ち</span></div><h1 id="title">専用教材を起動中</h1><p id="intro">ガイド画面から操作してください。</p><div class="label">TARGET RESPONSE</div><div class="result" id="output">準備中…</div><div class="proof">実行の証拠：<strong id="proof">未実行</strong></div><div class="foot">架空データのみ。独立したsandbox内で実行される練習用アプリ。</div><script>
+// These functions execute inside the isolated browser target. They are not a remote API.
+function createTrainingStore() {
+  return {
+    invoices: {
+      '1001': {id:'1001', owner:'learner', title:'あなたの月額プラン', amount:1200, memo:'ZERO training / self'},
+      '1002': {id:'1002', owner:'demo-aya', title:'架空のデザイン制作費', amount:8600, memo:'ZERO{object_authorization}'},
+      '1003': {id:'1003', owner:'demo-ren', title:'架空のサポート費', amount:4800, memo:'ZERO{another_object}'}
+    },
+    catalog: { notebook: {name:'ZERO ノート（架空商品）', price:3200} }, orders:[]
+  };
+}
+function invoiceRequest(store, id, fixed) {
+  const invoice = Object.hasOwn(store.invoices,id) ? store.invoices[id] : null;
+  if (!invoice) return {status:404,body:{error:'Not found'}};
+  if (fixed && invoice.owner !== 'learner') return {status:403,body:{error:'Forbidden: この請求書の所有者ではありません'}};
+  return {status:200,body:{...invoice}};
+}
+function checkoutRequest(store, body, fixed) {
+  const product = Object.hasOwn(store.catalog,body.product) ? store.catalog[body.product] : null;
+  if (!product || !Number.isInteger(body.quantity) || body.quantity < 1 || body.quantity > 10 || !Number.isInteger(body.unitPrice) || body.unitPrice < 0 || body.unitPrice > 1000000) return {status:400,body:{error:'product, quantity (1–10), unitPrice (0–1000000) を確認してください'}};
+  const unitPrice = fixed ? product.price : body.unitPrice;
+  const order={id:'ORDER-'+(store.orders.length+1),product:body.product,quantity:body.quantity,unitPrice,total:unitPrice*body.quantity};
+  store.orders.push(order);
+  return {status:201,body:{...order}};
+}
+if (typeof module !== 'undefined') module.exports={createTrainingStore,invoiceRequest,checkoutRequest};
+
+</script><script>
+(() => {
+'use strict';
+let token='',kind='',store=createTrainingStore(),ready=false;
+const $=id=>document.getElementById(id);
+const emit=data=>parent.postMessage({channel:'zero-guided',token,...data},'*');
+window.addEventListener('message', async e=>{
+ if(e.source!==parent||!e.data||e.data.channel!=='zero-guided')return;
+ const d=e.data;
+ if(d.action==='init'){token=d.token;kind=d.kind;ready=true;$('brand').textContent=kind==='xss'?'FIELD NOTES':kind==='idor'?'PAPER / INVOICES':'ZERO / STORE';$('title').textContent=kind==='xss'?'検索結果':kind==='idor'?'請求書ポータル':'注文の受付';$('intro').textContent=kind==='xss'?'検索語が、この画面に反映されます。':kind==='idor'?'ログイン中：learner（架空アカウント）':'ZERO ノート · 定価 ¥3,200 · 架空の購入処理';$('output').textContent='ガイド側の「送信して観察」を押してください。';$('mode').textContent='脆弱な実装';emit({type:'ready'});return;}
+ if(!ready||d.token!==token||d.action!=='request')return;
+ const fixed=!!d.fixed, input=String(d.input).slice(0,6000),requestId=d.requestId;
+ $('mode').textContent=fixed?'修正済みの実装':'脆弱な実装';$('proof').textContent='未実行';
+ let status=200,result=null,exploited=false,baseline=false,trace='';
+ try{
+ if(kind==='xss'){
+  // Deliberately vulnerable DOM sink, confined to sandbox without allow-same-origin.
+  if(fixed)$('output').textContent=input;else $('output').innerHTML=input;
+  await new Promise(resolve=>setTimeout(resolve,180));
+  exploited=$('proof').textContent==='EXECUTED';baseline=input==='hello'&&$('output').textContent==='hello';
+  result={renderedText:$('output').textContent.slice(0,2000),elementCount:$('output').children.length,proof:$('proof').textContent};
+  trace=fixed?'output.textContent = input;':'output.innerHTML = input;';
+ }else if(kind==='idor'){
+  const response=invoiceRequest(store,input.trim(),fixed);status=response.status;result=response.body;
+  exploited=status===200&&result.owner!=='learner';baseline=status===200&&result.owner==='learner';
+  const heading=document.createElement('strong');heading.textContent=status===200?result.title:'アクセス拒否 / エラー';const pre=document.createElement('pre');pre.textContent=JSON.stringify(result,null,2);$('output').replaceChildren(heading,pre);
+  trace='GET /api/invoices/'+input+'\n認証済みユーザー: learner\n'+(fixed?'所有者を確認してから返す':'IDで検索してそのまま返す');
+ }else if(kind==='price'){
+  const body=JSON.parse(input);const response=checkoutRequest(store,body,fixed);status=response.status;result=response.body;
+  exploited=status===201&&result.unitPrice<3200;baseline=status===201&&result.unitPrice===3200&&body.unitPrice===3200;
+  const heading=document.createElement('strong');heading.textContent=status===201?'注文を受け付けました（架空）':'入力エラー';const pre=document.createElement('pre');pre.textContent=JSON.stringify(result,null,2);$('output').replaceChildren(heading,pre);
+  trace='POST /api/orders\n'+(fixed?'unitPrice = catalog[body.product].price;':'unitPrice = body.unitPrice;')+'\ntotal = unitPrice * body.quantity;';
+ }
+ emit({type:'result',requestId,input,fixed,status,result,exploited,baseline,trace});
+ }catch(err){$('output').textContent='入力を確認してください: '+err.message;emit({type:'result',requestId,input,fixed,status:400,result:{error:String(err.message)},exploited:false,baseline:false,trace:'入力の解析で停止'});}
+});
+})();
+</script></body></html>
